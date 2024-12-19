@@ -82,7 +82,7 @@ UPLOAD_DIR = './uploads'
 
 def calculate_percentage(processed_chunks, total_chunks):
   percentage = (processed_chunks / total_chunks) * 100
-  return percentage
+  return round(percentage)
 
 
 @app.post("/upload")
@@ -93,6 +93,7 @@ async def upload(
   uploadFile: UploadFile = File(...)
 ):
   chunk = None
+  is_complete = False
   file_ext = fileName.rsplit('.', 1)[1]
   file_name = fileName.rsplit('.', 1)[0]
   os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -102,6 +103,21 @@ async def upload(
     chunk = await uploadFile.read()
     buffer.write(chunk)
 
+  if chunkIndex + 1 == totalChunks:
+    # Merge chunks into a single file
+    merged_file_path = os.path.join(UPLOAD_DIR, f'{file_name}.{file_ext}')
+
+    with open(merged_file_path, 'wb') as file_writer:
+      for i in range(totalChunks):
+        chunk_path = os.path.join(UPLOAD_DIR, f'{fileName}.chunk{i+1}')
+
+        with open(chunk_path, 'rb') as file_reader:
+          file_writer.write(file_reader.read())
+
+        os.remove(chunk_path)
+
+      is_complete = True
+
   chunk_stat = f'{chunkIndex + 1}/{totalChunks}'
   chunk_percentage = calculate_percentage(chunkIndex + 1, totalChunks)
 
@@ -109,9 +125,10 @@ async def upload(
     "success": True,
     "message": f"Chunk {chunk_stat} uploaded",
     "data": {
+      "is_complete": is_complete,
       "file_ext": file_ext,
       "file_name": file_name,
-      "chunkSize": len(chunk),
+      "chunk_size": len(chunk),
       "total_chunks": totalChunks,
       "current_chunk": chunkIndex + 1,
       "chunk_percentage": chunk_percentage,
